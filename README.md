@@ -17,6 +17,7 @@ ShiftPaw 是一个原生 macOS 排班提醒与桌面宠物应用。它支持白�
 - 无声音系统通知、菜单栏驻留、始终置顶和登录时启动。
 - 久坐定时提醒：猫咪气泡、面板倒计时、静音通知与稍后提醒。
 - 自动恢复主窗口和桌宠位置，并校验持久化设置。
+- 自动检查 GitHub 新版本，下载并校验更新安装包。
 
 ## 久坐提醒
 
@@ -30,6 +31,12 @@ ShiftPaw 是一个原生 macOS 排班提醒与桌面宠物应用。它支持白�
 
 - macOS 14 Sonoma 或更高版本
 - 从源码构建需要 Swift 6 和匹配版本的 Xcode/macOS SDK
+
+## 检查和安装更新
+
+默认在启动时和每 6 小时检查一次本仓库的最新正式 Release，可在设置中关闭“自动检查更新”。也可从设置页或菜单栏手动“检查更新”。GitHub 匿名 API 限流时会改用官方 Release 页面与随包发布的 `SHA256SUMS.txt`，无需令牌。网络异常会显示失败原因，恢复连接后可重试。
+
+发现新版本后，点击“下载更新”。应用只接受本仓库对应版本的 Apple Silicon DMG，并核对 GitHub 提供的 SHA-256；通过后才显示“打开安装包”。打开后，先退出 ShiftPaw，将新版拖入 Applications 替换，再重新打开。设置会保留。这一流程需要用户完成替换，不会在后台自动安装。
 
 ## 安装与登录时启动
 
@@ -72,7 +79,7 @@ open ".build/app/ShiftPaw.app"
 
 ```bash
 CODESIGN_IDENTITY="Developer ID Application: Example Corp (TEAMID)" \
-APP_VERSION="1.0.0" BUILD_NUMBER="1" ./scripts/build-app.sh
+APP_VERSION="1.1.0" BUILD_NUMBER="2" ./scripts/build-app.sh
 ```
 
 正式分发还需要完成 Apple 公证与 stapling。签名证书、公证凭据和生成的应用包不应提交到仓库。
@@ -85,7 +92,7 @@ APP_VERSION="1.0.0" BUILD_NUMBER="1" ./scripts/build-app.sh
 ~/Library/Application Support/ShiftPaw/settings.json
 ```
 
-ShiftPaw 不需要网络连接，不收集或上传用户数据。
+排班与久坐提醒可离线运行。自动检查更新会连接 GitHub 并发送应用版本号；下载更新也需要联网。班次、窗口设置与本地提醒记录不会上传。可关闭自动检查更新。
 
 ## 参与贡献
 

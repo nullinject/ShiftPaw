@@ -5,11 +5,13 @@ import SwiftUI
 struct ShiftPawApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
+    @StateObject private var updates = UpdateController()
 
     var body: some Scene {
         WindowGroup("ShiftPaw · 班次喵", id: "main") {
             DutyDashboard(
                 model: model,
+                updates: updates,
                 desktopPetController: appDelegate.desktopPetController,
                 dashboardCoordinator: appDelegate.windowCoordinator
             )
@@ -20,8 +22,10 @@ struct ShiftPawApp: App {
                 })
                 .onChange(of: model.settings) { _, settings in
                     appDelegate.windowCoordinator.apply(settings: settings)
+                    updates.configureAutomaticChecks(settings.automaticallyChecksForUpdates)
                 }
                 .onAppear {
+                    updates.configureAutomaticChecks(model.settings.automaticallyChecksForUpdates)
                     appDelegate.desktopPetController.prepare(
                         model: model,
                         dashboardCoordinator: appDelegate.windowCoordinator
@@ -40,6 +44,20 @@ struct ShiftPawApp: App {
                 dashboardCoordinator: appDelegate.windowCoordinator
             )
             Button("测试静音通知") { model.testNotification() }
+            Divider()
+            Button(updates.isChecking ? "正在检查更新…" : "检查更新") {
+                Task { await updates.checkForUpdates() }
+            }
+            .disabled(updates.isChecking || updates.isDownloading)
+            if let update = updates.availableUpdate {
+                Button(updates.isDownloading ? "正在下载…" : "下载更新 \(update.version)") {
+                    Task { await updates.downloadUpdate() }
+                }
+                .disabled(updates.isDownloading)
+            }
+            if updates.installerURL != nil {
+                Button("打开更新安装包") { updates.openInstaller() }
+            }
             Divider()
             Button("退出") { NSApp.terminate(nil) }
         }

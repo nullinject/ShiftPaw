@@ -93,17 +93,19 @@ struct DutySettings: Codable, Equatable, Sendable {
     var launchAtLogin: Bool
     var windowPosition: WindowPosition?
     var sedentary: SedentarySettings = .default
+    var automaticallyChecksForUpdates = true
 
     private enum CodingKeys: String, CodingKey {
-        case events, alwaysOnTop, launchAtLogin, windowPosition, sedentary
+        case events, alwaysOnTop, launchAtLogin, windowPosition, sedentary, automaticallyChecksForUpdates
     }
 
-    init(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, windowPosition: WindowPosition?, sedentary: SedentarySettings = .default) {
+    init(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, windowPosition: WindowPosition?, sedentary: SedentarySettings = .default, automaticallyChecksForUpdates: Bool = true) {
         self.events = events
         self.alwaysOnTop = alwaysOnTop
         self.launchAtLogin = launchAtLogin
         self.windowPosition = windowPosition
         self.sedentary = sedentary
+        self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
     }
 
     init(from decoder: any Decoder) throws {
@@ -116,6 +118,9 @@ struct DutySettings: Codable, Equatable, Sendable {
         sedentary = values.contains(.sedentary)
             ? try values.decode(SedentarySettings.self, forKey: .sedentary)
             : .default
+        automaticallyChecksForUpdates = values.contains(.automaticallyChecksForUpdates)
+            ? try values.decode(Bool.self, forKey: .automaticallyChecksForUpdates)
+            : true
     }
 
     static let `default` = DutySettings(
@@ -140,7 +145,7 @@ struct DutySettings: Codable, Equatable, Sendable {
         guard SedentarySettings.intervalRange.contains(sedentary.intervalMinutes) else {
             throw DutySettingsError.invalidSedentaryInterval
         }
-        return DutySettings(events: sanitizedEvents, alwaysOnTop: alwaysOnTop, launchAtLogin: launchAtLogin, windowPosition: validPosition, sedentary: sedentary)
+        return DutySettings(events: sanitizedEvents, alwaysOnTop: alwaysOnTop, launchAtLogin: launchAtLogin, windowPosition: validPosition, sedentary: sedentary, automaticallyChecksForUpdates: automaticallyChecksForUpdates)
     }
 
     func applying(times: [String], alwaysOnTop: Bool, launchAtLogin: Bool) throws -> DutySettings {

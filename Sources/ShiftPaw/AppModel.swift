@@ -72,7 +72,7 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func saveUserSettings(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, sedentary: SedentarySettings) -> Bool {
+    func saveUserSettings(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, sedentary: SedentarySettings, automaticallyChecksForUpdates: Bool) -> Bool {
         do {
             var candidate = try settings.applying(
                 events: events,
@@ -80,6 +80,7 @@ final class AppModel: ObservableObject {
                 launchAtLogin: launchAtLogin
             )
             candidate.sedentary = sedentary
+            candidate.automaticallyChecksForUpdates = automaticallyChecksForUpdates
             let clean = try candidate.sanitized()
             guard let store else { throw CocoaError(.fileNoSuchFile) }
 
