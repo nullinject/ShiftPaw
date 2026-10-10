@@ -27,9 +27,9 @@ struct ShiftPawApp: App {
                         dashboardCoordinator: appDelegate.windowCoordinator
                     )
                 }
-                .frame(minWidth: 330, idealWidth: 360, minHeight: 520, idealHeight: 580)
+                .frame(minWidth: 330, idealWidth: 360, minHeight: 610, idealHeight: 680)
         }
-        .defaultSize(width: 360, height: 580)
+        .defaultSize(width: 360, height: 680)
         .windowResizability(.contentSize)
 
         MenuBarExtra("ShiftPaw", systemImage: "pawprint.fill") {
@@ -60,6 +60,13 @@ private struct DesktopPetMenuCommands: View {
     let dashboardCoordinator: WindowCoordinator
 
     var body: some View {
+        if model.settings.sedentary.isEnabled {
+            Button("已活动，重新计时") { model.acknowledgeActivity() }
+            if model.sedentaryReminder.isReminderActive {
+                Button("10 分钟后提醒") { model.snoozeSedentaryReminder() }
+            }
+            Divider()
+        }
         Button {
             controller.toggle(model: model, dashboardCoordinator: dashboardCoordinator)
         } label: {

@@ -92,6 +92,31 @@ struct DutySettings: Codable, Equatable, Sendable {
     var alwaysOnTop: Bool
     var launchAtLogin: Bool
     var windowPosition: WindowPosition?
+    var sedentary: SedentarySettings = .default
+
+    private enum CodingKeys: String, CodingKey {
+        case events, alwaysOnTop, launchAtLogin, windowPosition, sedentary
+    }
+
+    init(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, windowPosition: WindowPosition?, sedentary: SedentarySettings = .default) {
+        self.events = events
+        self.alwaysOnTop = alwaysOnTop
+        self.launchAtLogin = launchAtLogin
+        self.windowPosition = windowPosition
+        self.sedentary = sedentary
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        events = try values.decode([DutyEvent].self, forKey: .events)
+        alwaysOnTop = try values.decode(Bool.self, forKey: .alwaysOnTop)
+        launchAtLogin = try values.decode(Bool.self, forKey: .launchAtLogin)
+        windowPosition = try values.decodeIfPresent(WindowPosition.self, forKey: .windowPosition)
+        // Only an absent field uses defaults; malformed new settings still fail validation.
+        sedentary = values.contains(.sedentary)
+            ? try values.decode(SedentarySettings.self, forKey: .sedentary)
+            : .default
+    }
 
     static let `default` = DutySettings(
         events: DutySchedulePreset.midnightHandoff.events,
@@ -112,7 +137,10 @@ struct DutySettings: Codable, Equatable, Sendable {
             return DutyEvent.canonical(id: event.id, time: event.time)
         }
         let validPosition = windowPosition.flatMap { abs($0.x) < 100_000 && abs($0.y) < 100_000 ? $0 : nil }
-        return DutySettings(events: sanitizedEvents, alwaysOnTop: alwaysOnTop, launchAtLogin: launchAtLogin, windowPosition: validPosition)
+        guard SedentarySettings.intervalRange.contains(sedentary.intervalMinutes) else {
+            throw DutySettingsError.invalidSedentaryInterval
+        }
+        return DutySettings(events: sanitizedEvents, alwaysOnTop: alwaysOnTop, launchAtLogin: launchAtLogin, windowPosition: validPosition, sedentary: sedentary)
     }
 
     func applying(times: [String], alwaysOnTop: Bool, launchAtLogin: Bool) throws -> DutySettings {
@@ -141,12 +169,14 @@ enum DutySettingsError: LocalizedError, Equatable {
     case invalidTime(String)
     case invalidEventOrder
     case invalidEventCount(expected: Int, actual: Int)
+    case invalidSedentaryInterval
 
     var errorDescription: String? {
         switch self {
         case .invalidTime(let value): "无效时间：\(value)，请使用 HH:mm。"
         case .invalidEventOrder: "提醒节点不完整或顺序错误。"
         case .invalidEventCount(let expected, let actual): "提醒节点数量错误：应为 \(expected) 个，实际为 \(actual) 个。"
+        case .invalidSedentaryInterval: "久坐提醒间隔应为 15 至 180 分钟。"
         }
     }
 }

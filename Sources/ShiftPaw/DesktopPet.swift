@@ -325,6 +325,9 @@ private struct DesktopPetWindowView: View {
     private var isOnDuty: Bool { model.snapshot?.isOnDuty ?? false }
 
     private var statusText: String {
+        if model.sedentaryReminder.isReminderActive {
+            return "起来活动一下喵！"
+        }
         if controller.isPerformingCute {
             return "本喵来卖萌啦"
         }
@@ -349,8 +352,8 @@ private struct DesktopPetWindowView: View {
                 .overlay {
                     Capsule().stroke(DutyPalette.separator, lineWidth: 1)
                 }
-                .opacity(isHovering || model.alertText != nil || controller.isPerformingCute ? 1 : 0)
-                .scaleEffect(isHovering || model.alertText != nil || controller.isPerformingCute ? 1 : 0.92)
+                .opacity(isHovering || model.alertText != nil || controller.isPerformingCute || model.sedentaryReminder.isReminderActive ? 1 : 0)
+                .scaleEffect(isHovering || model.alertText != nil || controller.isPerformingCute || model.sedentaryReminder.isReminderActive ? 1 : 0.92)
                 .allowsHitTesting(false)
 
             TimelineView(.periodic(from: .now, by: 1 / 12)) { context in
@@ -376,6 +379,17 @@ private struct DesktopPetWindowView: View {
             }
         }
         .contextMenu {
+            if model.settings.sedentary.isEnabled {
+                Button("已活动，重新计时", systemImage: "figure.walk") {
+                    model.acknowledgeActivity()
+                }
+                if model.sedentaryReminder.isReminderActive {
+                    Button("10 分钟后提醒", systemImage: "clock") {
+                        model.snoozeSedentaryReminder()
+                    }
+                }
+                Divider()
+            }
             Button("打开值守面板", systemImage: "rectangle.on.rectangle") {
                 onOpenDashboard()
             }
@@ -385,6 +399,6 @@ private struct DesktopPetWindowView: View {
         }
         .help("双击打开值守面板")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isOnDuty ? "值守桌面宠物正在工作" : "值守桌面宠物正在待机")
+        .accessibilityLabel(model.sedentaryReminder.isReminderActive ? "久坐提醒：起来活动一下喵！" : (isOnDuty ? "值守桌面宠物正在工作" : "值守桌面宠物正在待机"))
     }
 }

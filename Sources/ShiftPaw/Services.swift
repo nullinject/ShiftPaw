@@ -13,7 +13,10 @@ struct SettingsStore {
             appropriateFor: nil,
             create: true
         )
-        let directory = supportDirectory.appendingPathComponent("ShiftPaw", isDirectory: true)
+        try self.init(directory: supportDirectory.appendingPathComponent("ShiftPaw", isDirectory: true), fileManager: fileManager)
+    }
+
+    init(directory: URL, fileManager: FileManager = .default) throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         fileURL = directory.appendingPathComponent("settings.json", isDirectory: false)
     }
@@ -83,6 +86,19 @@ actor SilentNotificationService {
         // Deliberately leave `sound` unset: duty reminders must remain silent.
         let request = UNNotificationRequest(identifier: occurrence.id, content: content, trigger: nil)
         try await center.add(request)
+    }
+
+    func deliverSedentaryReminder(at date: Date) async throws {
+        try await center.add(Self.sedentaryRequest(at: date))
+    }
+
+    nonisolated static func sedentaryRequest(at date: Date) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = "久坐提醒"
+        content.body = "起来活动一下喵！站起来走走，伸展一下身体。"
+        content.categoryIdentifier = "ShiftPawSedentaryReminder"
+        // Use a separate identifier from shift reminders, and keep sound unset.
+        return UNNotificationRequest(identifier: "sedentary:\(date.timeIntervalSince1970)", content: content, trigger: nil)
     }
 }
 
