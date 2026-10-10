@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DutyDashboard: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updates: UpdateController
     @ObservedObject var desktopPetController: DesktopPetWindowController
     let dashboardCoordinator: WindowCoordinator
     @State private var isShowingSettings = false
@@ -38,6 +39,17 @@ struct DutyDashboard: View {
                             .frame(maxHeight: .infinity)
                     }
 
+                    SedentaryReminderPanel(model: model)
+                    if let update = updates.availableUpdate {
+                        HStack {
+                            Text("发现新版本 \(update.version)")
+                                .font(.caption)
+                            Spacer()
+                            Button("查看更新") { isShowingSettings = true }
+                        }
+                        .foregroundStyle(DutyPalette.accent)
+                    }
+
                     Spacer(minLength: 0)
 
                     AlertSlot(text: model.alertText)
@@ -55,7 +67,7 @@ struct DutyDashboard: View {
         }
         .tint(DutyPalette.accent)
         .sheet(isPresented: $isShowingSettings) {
-            SettingsView(model: model)
+            SettingsView(model: model, updates: updates)
         }
         .alert("操作失败", isPresented: Binding(
             get: { model.errorText != nil },
@@ -64,6 +76,48 @@ struct DutyDashboard: View {
             Button("好", role: .cancel) { model.errorText = nil }
         } message: {
             Text(model.errorText ?? "未知错误")
+        }
+    }
+}
+
+private struct SedentaryReminderPanel: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("久坐提醒", systemImage: "figure.walk")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DutyPalette.accent)
+                Spacer()
+                if !model.settings.sedentary.isEnabled {
+                    Text("已关闭").foregroundStyle(DutyPalette.textTertiary)
+                } else if model.sedentaryReminder.isReminderActive {
+                    Text("起来活动一下喵！").foregroundStyle(DutyPalette.accent)
+                } else if let next = model.sedentaryReminder.nextReminderDate {
+                    Text(CountdownText.format(seconds: next.timeIntervalSince(model.now)))
+                        .monospacedDigit()
+                        .foregroundStyle(DutyPalette.textSecondary)
+                }
+            }
+            .font(.caption)
+
+            if model.settings.sedentary.isEnabled {
+                HStack {
+                    Button("已活动，重新计时") { model.acknowledgeActivity() }
+                    Spacer(minLength: 4)
+                    if model.sedentaryReminder.isReminderActive {
+                        Button("10 分钟后提醒") { model.snoozeSedentaryReminder() }
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+        }
+        .padding(14)
+        .background(DutyPalette.surface, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8).stroke(DutyPalette.separator, lineWidth: 1)
         }
     }
 }
@@ -406,9 +460,12 @@ private struct DashboardFooter: View {
 private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: AppModel
+    @ObservedObject var updates: UpdateController
     @State private var draftEvents: [DutyEvent] = []
     @State private var alwaysOnTop = true
     @State private var launchAtLogin = false
+    @State private var sedentary = SedentarySettings.default
+    @State private var automaticallyChecksForUpdates = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -429,74 +486,130 @@ private struct SettingsView: View {
 
             Divider().overlay(DutyPalette.separator)
 
-            VStack(spacing: 16) {
-                ShiftTemplateMenu(events: draftEvents) { preset in
-                    draftEvents = preset.events
-                }
+            ScrollView {
+                VStack(spacing: 16) {
+                    ShiftTemplateMenu(events: draftEvents) { preset in
+                        draftEvents = preset.events
+                    }
 
-                VStack(spacing: 0) {
-                    ForEach(Array(draftEvents.enumerated()), id: \.element.id) { index, event in
-                        SettingsTimeRow(event: event, time: timeBinding(for: index))
-                        if index < draftEvents.count - 1 {
-                            Divider()
-                                .overlay(DutyPalette.separator)
-                                .padding(.leading, 42)
+                    VStack(spacing: 0) {
+                        ForEach(Array(draftEvents.enumerated()), id: \.element.id) { index, event in
+                            SettingsTimeRow(event: event, time: timeBinding(for: index))
+                            if index < draftEvents.count - 1 {
+                                Divider()
+                                    .overlay(DutyPalette.separator)
+                                    .padding(.leading, 42)
+                            }
                         }
                     }
-                }
-                .padding(.horizontal, 14)
-                .background(DutyPalette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DutyPalette.separator, lineWidth: 1)
-                }
-
-                VStack(spacing: 0) {
-                    SettingsToggleRow(
-                        title: "始终置顶",
-                        systemImage: "pin",
-                        isOn: $alwaysOnTop
-                    )
-                    Divider()
-                        .overlay(DutyPalette.separator)
-                        .padding(.leading, 42)
-                    SettingsToggleRow(
-                        title: "登录时启动",
-                        systemImage: "power",
-                        isOn: $launchAtLogin
-                    )
-                }
-                .padding(.horizontal, 14)
-                .background(DutyPalette.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DutyPalette.separator, lineWidth: 1)
-                }
-
-                HStack {
-                    Button("取消", role: .cancel) { dismiss() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(DutyPalette.textSecondary)
-
-                    Spacer()
-
-                    Button("保存") {
-                        if model.saveUserSettings(
-                            events: draftEvents,
-                            alwaysOnTop: alwaysOnTop,
-                            launchAtLogin: launchAtLogin
-                        ) {
-                            dismiss()
-                        }
+                    .padding(.horizontal, 14)
+                    .background(DutyPalette.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(DutyPalette.separator, lineWidth: 1)
                     }
-                    .buttonStyle(PrimaryActionButtonStyle())
-                    .keyboardShortcut(.defaultAction)
+
+                    VStack(spacing: 0) {
+                        SettingsToggleRow(
+                            title: "始终置顶",
+                            systemImage: "pin",
+                            isOn: $alwaysOnTop
+                        )
+                        Divider()
+                            .overlay(DutyPalette.separator)
+                            .padding(.leading, 42)
+                        SettingsToggleRow(
+                            title: "登录时启动",
+                            systemImage: "power",
+                            isOn: $launchAtLogin
+                        )
+                    }
+                    .padding(.horizontal, 14)
+                    .background(DutyPalette.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(DutyPalette.separator, lineWidth: 1)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingsToggleRow(
+                            title: "久坐提醒",
+                            systemImage: "figure.walk",
+                            isOn: $sedentary.isEnabled
+                        )
+                        Stepper("每 \(sedentary.intervalMinutes) 分钟提醒", value: $sedentary.intervalMinutes, in: SedentarySettings.intervalRange, step: 15)
+                            .disabled(!sedentary.isEnabled)
+                        Text("运行期间定时提醒；活动后点击“已活动”重新计时。")
+                            .font(.caption)
+                            .foregroundStyle(DutyPalette.textTertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+                    .background(DutyPalette.surface, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8).stroke(DutyPalette.separator, lineWidth: 1)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsToggleRow(
+                            title: "自动检查更新",
+                            systemImage: "arrow.triangle.2.circlepath",
+                            isOn: $automaticallyChecksForUpdates
+                        )
+                        Text("当前版本 \(updates.currentVersion) · \(updates.statusText)")
+                            .font(.caption)
+                            .foregroundStyle(DutyPalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack {
+                            Button("检查更新") { Task { await updates.checkForUpdates() } }
+                                .disabled(updates.isChecking || updates.isDownloading)
+                            Spacer()
+                            if updates.installerURL != nil {
+                                Button("打开安装包") { updates.openInstaller() }
+                            } else if updates.availableUpdate != nil {
+                                Button(updates.isDownloading ? "正在下载…" : "下载更新") {
+                                    Task { await updates.downloadUpdate() }
+                                }
+                                .disabled(updates.isDownloading)
+                            }
+                        }
+                        .font(.caption)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+                    .background(DutyPalette.surface, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8).stroke(DutyPalette.separator, lineWidth: 1)
+                    }
+
+                    HStack {
+                        Button("取消", role: .cancel) { dismiss() }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(DutyPalette.textSecondary)
+
+                        Spacer()
+
+                        Button("保存") {
+                            if model.saveUserSettings(
+                                events: draftEvents,
+                                alwaysOnTop: alwaysOnTop,
+                                launchAtLogin: launchAtLogin,
+                                sedentary: sedentary,
+                                automaticallyChecksForUpdates: automaticallyChecksForUpdates
+                            ) {
+                                dismiss()
+                            }
+                        }
+                        .buttonStyle(PrimaryActionButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                    }
+                    .padding(.top, 2)
                 }
-                .padding(.top, 2)
+                .padding(20)
             }
-            .padding(20)
+            .frame(maxHeight: 650)
         }
         .frame(width: 380)
         .background(DutyPalette.canvas)
@@ -505,6 +618,8 @@ private struct SettingsView: View {
             draftEvents = model.settings.events
             alwaysOnTop = model.settings.alwaysOnTop
             launchAtLogin = model.settings.launchAtLogin
+            sedentary = model.settings.sedentary
+            automaticallyChecksForUpdates = model.settings.automaticallyChecksForUpdates
         }
     }
 

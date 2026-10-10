@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var settings: DutySettings
     @Published private(set) var snapshot: ScheduleSnapshot?
     @Published private(set) var now = Date()
+    @Published private(set) var sedentaryReminder: SedentaryReminderState
     @Published var alertText: String?
     @Published var errorText: String?
 
@@ -18,18 +19,21 @@ final class AppModel: ObservableObject {
     private var deliveredOccurrenceIDs = Set<String>()
 
     init() {
+        let startedAt = Date()
         do {
             let createdStore = try SettingsStore()
             store = createdStore
             var loadedSettings = createdStore.load()
             loadedSettings.launchAtLogin = LoginItemController.isEnabled
             settings = loadedSettings
+            sedentaryReminder = SedentaryReminderState(settings: loadedSettings.sedentary, now: startedAt)
         } catch {
             Logger.application.error("Unable to create settings store: \(error.localizedDescription, privacy: .public)")
             settings = .default
+            sedentaryReminder = SedentaryReminderState(settings: .default, now: startedAt)
             store = nil
         }
-        lastTick = Date()
+        lastTick = startedAt
         refresh()
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -58,6 +62,7 @@ final class AppModel: ObservableObject {
             guard let store else { throw CocoaError(.fileNoSuchFile) }
             try store.save(clean)
             settings = clean
+            sedentaryReminder.configure(clean.sedentary, at: Date())
             refresh()
             return true
         } catch {
@@ -67,13 +72,16 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func saveUserSettings(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool) -> Bool {
+    func saveUserSettings(events: [DutyEvent], alwaysOnTop: Bool, launchAtLogin: Bool, sedentary: SedentarySettings, automaticallyChecksForUpdates: Bool) -> Bool {
         do {
-            let clean = try settings.applying(
+            var candidate = try settings.applying(
                 events: events,
                 alwaysOnTop: alwaysOnTop,
                 launchAtLogin: launchAtLogin
             )
+            candidate.sedentary = sedentary
+            candidate.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+            let clean = try candidate.sanitized()
             guard let store else { throw CocoaError(.fileNoSuchFile) }
 
             let previousLaunchAtLogin = settings.launchAtLogin
@@ -95,6 +103,7 @@ final class AppModel: ObservableObject {
             }
 
             settings = clean
+            sedentaryReminder.configure(clean.sedentary, at: Date())
             refresh()
             return true
         } catch {
@@ -106,6 +115,14 @@ final class AppModel: ObservableObject {
     func persistWindowPosition(_ position: WindowPosition) {
         guard settings.windowPosition != position else { return }
         update { $0.windowPosition = position }
+    }
+
+    func acknowledgeActivity() {
+        sedentaryReminder.reset(at: Date())
+    }
+
+    func snoozeSedentaryReminder() {
+        sedentaryReminder.snooze(at: Date())
     }
 
     func testNotification() {
@@ -126,6 +143,7 @@ final class AppModel: ObservableObject {
 
     private func tick() {
         let current = Date()
+        let sedentaryDue = sedentaryReminder.advance(at: current, previousTick: lastTick)
         let elapsed = min(max(current.timeIntervalSince(lastTick), 0), 30 * 60)
         let from = current.addingTimeInterval(-elapsed)
         lastTick = current
@@ -142,6 +160,22 @@ final class AppModel: ObservableObject {
             }
         }
         refresh()
+        if sedentaryDue {
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    guard try await notifications.requestAuthorizationIfNeeded() else {
+                        errorText = "系统通知未获授权。久坐提醒仍会显示在桌宠和面板中。"
+                        return
+                    }
+                    // Ignore a reminder acknowledged or disabled while authorization was pending.
+                    guard sedentaryReminder.isReminderActive else { return }
+                    try await notifications.deliverSedentaryReminder(at: current)
+                } catch {
+                    errorText = "无法发送久坐提醒：\(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     private func refresh() {

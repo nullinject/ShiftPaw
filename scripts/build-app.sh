@@ -5,8 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIGURATION="${CONFIGURATION:-release}"
-APP_VERSION="${APP_VERSION:-1.0.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+APP_VERSION="${APP_VERSION:-1.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-2}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_DIR/.build/app}"
 APP_BUNDLE="$OUTPUT_DIR/ShiftPaw.app"
 
